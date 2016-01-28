@@ -2,10 +2,10 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
-module:testrunner
+# module:testrunner
 
 # Home is My Blog
-Get 	/											Index.Index
+Get 	/											Index.Default
 GET     /note   	                                Note.Index
 # leanote home
 GET     /index   	                                Index.Index
@@ -37,9 +37,9 @@ POST	/findPasswordUpdate							Auth.FindPasswordUpdate
 * /note/copyNote Note.CopyNote
 * /note/copySharedNote Note.CopySharedNote
 * /note/searchNoteByTags Note.SearchNoteByTags
-* /note/toImage Note.ToImage
-* /note/html2Image Note.Html2Image
 * /note/setNote2Blog Note.SetNote2Blog
+* /note/exportPdf Note.ExportPDF
+* /note/toPdf Note.ToPdf
 # pjax
 GET     /note/:noteId   	                        Note.Index
 

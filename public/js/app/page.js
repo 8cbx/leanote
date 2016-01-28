@@ -25,9 +25,13 @@ editorMode.prototype.toggleAText = function(isWriting) {
 	}, 0);
 }
 editorMode.prototype.isWriting = function(hash) {
+	if(!hash) {
+		hash = location.hash;
+	}
 	return hash.indexOf(this.writingHash) >= 0
 }
 editorMode.prototype.init = function() {
+	this.$themeLink = $("#themeLink");
 	this.changeMode(this.isWritingMode);
 	var self = this;
 	$(".toggle-editor-mode").click(function(e) {
@@ -54,9 +58,7 @@ editorMode.prototype.changeMode = function(isWritingMode) {
 	} else {
 		this.normalMode();
 	}
-	
-	$("#moreBtn i").removeClass("fa-angle-up").addClass("fa-angle-down");
-}
+};
 
 editorMode.prototype.resizeEditor = function() {
 	// css还没渲染完
@@ -71,42 +73,45 @@ editorMode.prototype.resizeEditor = function() {
 	}, 500);
 }
 editorMode.prototype.normalMode = function() {
+	// 最开始的时候就调用?
 	/*
-	var w = $(document).width();
-	var h = $(document).height();
-	$("#lock").css({right:0, bottom:0});
-	*/
-	
 	var $c = $("#editorContent_ifr").contents();
-	
 	$c.contents().find("#writtingMode").remove();
 	$c.contents().find('link[href$="editor-writting-mode.css"]').remove();
-			
+	*/
+
 	$("#noteItemListWrap, #notesAndSort").show();
 	$("#noteList").unbind("mouseenter").unbind("mouseleave"); 
 	
 	var theme = UserInfo.Theme || "default";
 	theme += ".css";
-	$("#themeLink").attr("href", "/css/theme/" + theme);
-	
-	$("#mceToolbar").css("height", "30px");
-	
-//	$("#lock").animate({right:w},1000);
-	
-	this.resizeEditor();
+	var $themeLink = $("#themeLink");
+	// 如果之前不是normal才换
+	if(this.$themeLink.attr('href').indexOf('writting-overwrite.css') != -1) {
+		this.$themeLink.attr("href", "/css/theme/" + theme);
+	}
 	
 	$("#noteList").width(UserInfo.NoteListWidth);
 	$("#note").css("left", UserInfo.NoteListWidth);
-}
+
+	this.isWritingMode = false;
+	this.resizeEditor();
+};
+
 editorMode.prototype.writtingMode = function() {
-	// $("#pageInner").removeClass("animated fadeInUp");
-	
-	$("#themeLink").attr("href", "/css/theme/writting-overwrite.css");
-	
+	if (Note.inBatch) {
+		return;
+	}
+	if(this.$themeLink.attr('href').indexOf('writting-overwrite.css') == -1) {
+		this.$themeLink.attr("href", "/css/theme/writting-overwrite.css");
+	}
+
+	/*
 	setTimeout(function() {
 		var $c = $("#editorContent_ifr").contents();
 		$c.contents().find("head").append('<link type="text/css" rel="stylesheet" href="/css/editor/editor-writting-mode.css" id="writtingMode">');
 	}, 0);
+	*/
 		
 	$("#noteItemListWrap, #notesAndSort").fadeOut();
 	$("#noteList").hover(function() {
@@ -116,7 +121,7 @@ editorMode.prototype.writtingMode = function() {
 	});
 	
 	// 点击扩展会使html的height生成, 切换后会覆盖css文件的
-	$("#mceToolbar").css("height", "40px");
+	// $("#mceToolbar").css("height", "40px");
 	
 	//$("#pageInner").addClass("animated fadeInUp");
 
@@ -124,7 +129,12 @@ editorMode.prototype.writtingMode = function() {
 	
 	$("#noteList").width(250);
 	$("#note").css("left", 0);
-}
+	
+	// 切换到写模式
+	Note.toggleWriteable();
+
+	this.isWritingMode = true;
+};
 
 editorMode.prototype.getWritingCss = function() {
 	if(this.isWritingMode) {
@@ -133,6 +143,7 @@ editorMode.prototype.getWritingCss = function() {
 	return [];
 }
 var em = new editorMode();
+LEA.em = em;
 
 //----------------
 // 拖拉改变变宽度
@@ -285,26 +296,33 @@ var Resize = {
 			resizeEditor();
 		}
 	},
-	
+
+	resizeMDInterval: null,
 	// mdeditor
 	resizeMdColumns: function(event) {
 		var self = this;
 		if (self.mdLineMove) {
 			var mdEditorWidth = event.clientX - self.leftColumn.offset().left; // self.leftNotebook.width() - self.noteList.width();
 			self.setMdColumnWidth(mdEditorWidth);
+
+			clearInterval(self.resizeMDInterval);
+
+			self.resizeMDInterval = setTimeout(function () {
+				MD.resize && MD.resize();
+			}, 50);
 		}
 	},
 	// 设置宽度
 	setMdColumnWidth: function(mdEditorWidth) { 
 		var self = this;
-		if(mdEditorWidth > 100) {
+		var allWidth = $('#note').width();
+		if(mdEditorWidth > 100 && mdEditorWidth < allWidth - 80) {
 			UserInfo.MdEditorWidth = mdEditorWidth;
-			log(mdEditorWidth)
 			self.leftColumn.width(mdEditorWidth);
 			self.rightColumn.css("left", mdEditorWidth);
 			// self.mdSplitter.css("left", mdEditorWidth);
 		}
-		
+
 		// 这样, scrollPreview 才会到正确的位置
 		if(MD) {
 			MD.onResize();
@@ -444,27 +462,20 @@ function initEditor() {
 	var mceToobarEverHeight = 0;
 	$("#moreBtn").click(function() {
 		saveBookmark();
-		
-		var height = $("#mceToolbar").height();
-
-		// 现在是折叠的
-		if (height < $("#popularToolbar").height()) {
-			$("#mceToolbar").height($("#popularToolbar").height());
-			$(this).find("i").removeClass("fa-angle-down").addClass("fa-angle-up");
-			mceToobarEverHeight = height;
+		var $editor = $('#editor');
+		if($editor.hasClass('all-tool')) {
+			$editor.removeClass('all-tool');
 		} else {
-			$("#mceToolbar").height(mceToobarEverHeight);
-			$(this).find("i").removeClass("fa-angle-up").addClass("fa-angle-down");
+			$editor.addClass('all-tool');
 		}
-		
-		resizeEditor();
-		
+
 		restoreBookmark();
 	});
 
 	// 初始化编辑器
 	tinymce.init({
 		inline: true,
+		theme: 'leanote',
 		valid_children: "+pre[div|#text|p|span|textarea|i|b|strong]", // ace
 		/*
 		protect: [
@@ -476,12 +487,34 @@ function initEditor() {
 	    ],
 	    */
 		setup: function(ed) {
-			ed.on('keydown', Note.saveNote);
+			ed.on('keydown', function(e) {
+				// 如果是readony, 则不能做任何操作
+				var num = e.which ? e.which : e.keyCode;
+				// 如果是readony, 则不能做任何操作, 除了复制
+				if(Note.readOnly && !((e.ctrlKey || e.metaKey) && num == 67)) {
+					e.preventDefault();
+					return;
+				}
+
+				// 当输入的时候, 把当前raw删除掉
+				LeaAce.removeCurToggleRaw();
+			});
 			
 			// 为了把下拉菜单关闭
+			/*
 	        ed.on("click", function(e) {
-	          $("body").trigger("click");
+	          // $("body").trigger("click");
+	          // console.log(tinymce.activeEditor.selection.getNode());
 	        });
+	        */
+	        
+	        // electron下有问题, Ace剪切导致行数减少, #16
+			ed.on('cut', function(e) {
+				if($(e.target).hasClass('ace_text-input')) {
+					e.preventDefault();
+					return;
+				}
+			});
 		},
 		
 		// fix TinyMCE Removes site base url
@@ -491,19 +524,18 @@ function initEditor() {
 		remove_script_host:false,
 		
 		selector : "#editorContent",
-		// height: 100,//这个应该是文档的高度, 而其上层的高度是$("#content").height(),
-		// parentHeight: $("#content").height(),
-		// content_css : ["/css/bootstrap.css", "/css/editor/editor.css"].concat(em.getWritingCss()),
-		content_css : ["/css/editor/editor.css"].concat(em.getWritingCss()),
+		
+		// content_css 不再需要
+		// content_css : [LEA.sPath + "/css/editor/editor.css"], // .concat(em.getWritingCss()),
 		skin : "custom",
-		language: LEA.locale, // 语言
+		// tinymce just support en & zh lang currently
+		language: LEA.locale != 'en' && LEA.locale != 'zh' ? 'en' : LEA.locale,
 		plugins : [
-				"autolink link leaui_image lists charmap hr", "paste",
+				"autolink link leaui_image lists hr", "paste",
 				"searchreplace leanote_nav leanote_code tabfocus",
-				"table directionality textcolor" ], // nonbreaking
-				
+				"table textcolor" ], // nonbreaking directionality charmap
 		toolbar1 : "formatselect | forecolor backcolor | bold italic underline strikethrough | leaui_image | leanote_code leanote_inline_code | bullist numlist | alignleft aligncenter alignright alignjustify",
-		toolbar2 : "outdent indent blockquote | link unlink | table | hr removeformat | subscript superscript |searchreplace | pastetext pasteCopyImage | leanote_ace_pre | fontselect fontsizeselect",
+		toolbar2 : "outdent indent blockquote | link unlink | table | hr removeformat | subscript superscript |searchreplace | pastetext | leanote_ace_pre | fontselect fontsizeselect",
 
 		// 使用tab键: http://www.tinymce.com/wiki.php/Plugin3x:nonbreaking
 		// http://stackoverflow.com/questions/13543220/tiny-mce-how-to-allow-people-to-indent
@@ -544,11 +576,32 @@ function initEditor() {
 	
 	// 刷新时保存 参考autosave插件
 	window.onbeforeunload = function(e) {
-    	Note.curChangedSaveIt();
+		if (LEA.isLogout) {
+			return;
+		}
+    	Note.curChangedSaveIt(true);
 	}
-	
-	// 全局ctrl + s
-	$("body").on('keydown', Note.saveNote);
+
+	// 全局快捷键
+	// ctrl + s 保存
+	// ctrl+e 切换只读与可写
+	$('body').on('keydown', function (e) {
+		var num = e.which ? e.which : e.keyCode;
+		var ctrlOrMetaKey = e.ctrlKey || e.metaKey;
+	    if(ctrlOrMetaKey) {
+			// 保存
+		    if (num == 83 ) { // ctrl + s or command + s
+		    	Note.curChangedSaveIt();
+		    	e.preventDefault();
+		    	return false;
+		    }
+		    else if (num == 69) { // e
+		    	Note.toggleWriteableAndReadOnly();
+		    	e.preventDefault();
+		    	return false;
+		    }
+	    }
+	});
 }
 
 //-----------------------
@@ -602,7 +655,10 @@ function scrollTo(self, tagName, text) {
 
 //--------------
 // 调用之
-$(function() {
+// $(function() {
+	LEA.s3 = new Date();
+	console.log('initing...');
+	
 	// 窗口缩放时
 	$(window).resize(function() {
 		Mobile.isMobile();
@@ -639,23 +695,11 @@ $(function() {
 		}
 	});
 	
-	// 打开设置
-	function openSetInfoDialog(whichTab) {
-		showDialogRemote("/user/account", {tab: whichTab});
-	}
-	// 帐号设置
-	$("#setInfo").click(function() {
-		openSetInfoDialog(0);
-	});
 	// 邮箱验证
 	$("#wrongEmail").click(function() {
 		openSetInfoDialog(1);
 	});
 	
-	$("#setAvatarMenu").click(function() {
-		showDialog2("#avatarDialog", {title: "头像设置", postShow: function() {
-		}});
-	});
 	$("#setTheme").click(function() {
 		showDialog2("#setThemeDialog", {title: "主题设置", postShow: function() {
 			if (!UserInfo.Theme) {
@@ -669,22 +713,20 @@ $(function() {
 	// 主题
 	$("#themeForm").on("click", "input", function(e) {
 		var val = $(this).val();
-		$("#themeLink").attr("href", "/css/theme/" + val + ".css");
-		
+		var preHref = $("#themeLink").attr("href"); // default.css?id=7
+		var arr = preHref.split('=');
+		var id = 1;
+		if (arr.length == 2) {
+			id = arr[1];
+		}
+		$("#themeLink").attr("href", "/css/theme/" + val + ".css?id=" + id);
 		ajaxPost("/user/updateTheme", {theme: val}, function(re) {
 			if(reIsOk(re)) {
 				UserInfo.Theme = val
 			}
 		});
 	});
-	
-	//-------------
-	// 邮箱验证
-	if(!UserInfo.Verified) {
-//		$("#leanoteMsg").hide();
-//		$("#verifyMsg").show();
-	}
-	
+
 	// 禁止双击选中文字
 	$("#notebook, #newMyNote, #myProfile, #topNav, #notesAndSort", "#leanoteNavTrigger").bind("selectstart", function(e) {
 		e.preventDefault();
@@ -695,39 +737,21 @@ $(function() {
 	function updateLeftIsMin(is) {
 		ajaxGet("/user/updateLeftIsMin", {leftIsMin: is})
 	}
+
+	// 最小化左侧
+	var $page = $('#page');
 	function minLeft(save) {
-		$("#leftNotebook").width(30);
-		$("#notebook").hide();
-		// 左侧
-		$("#noteAndEditor").css("left", 30)	
-		$("#notebookSplitter").hide();
-		
-//		$("#leftSwitcher").removeClass("fa-angle-left").addClass("fa-angle-right");
-		
-		// logo
-		$("#logo").hide();
-		$("#leftSwitcher").hide();
-		$("#leftSwitcher2").show();
-		$("#leftNotebook .slimScrollDiv").hide();
-		
+		$page.addClass('mini-left');
 		if(save) {
 			updateLeftIsMin(true);
 		}
 	}
-	
+
+	// 展开右侧
 	function maxLeft(save) {
+		$page.removeClass('mini-left');
 		$("#noteAndEditor").css("left", UserInfo.NotebookWidth);
 		$("#leftNotebook").width(UserInfo.NotebookWidth);
-		$("#notebook").show();
-		$("#notebookSplitter").show();
-		
-//		$("#leftSwitcher").removeClass("fa-angle-right").addClass("fa-angle-left");
-		
-		$("#leftSwitcher2").hide();
-		$("#logo").show();
-		$("#leftSwitcher").show();
-		$("#leftNotebook .slimScrollDiv").show();
-		
 		if(save) {
 			updateLeftIsMin(false);
 		}
@@ -788,6 +812,9 @@ $(function() {
 	if (UserInfo.LeftIsMin) {
 		minLeft(false);
 	}
+	else {
+		maxLeft(false);
+	}
 	
 	// end
 	// 开始时显示loading......
@@ -802,12 +829,7 @@ $(function() {
 		// $ul.css("max-height", getMaxDropdownHeight(this));
 	});
 	
-	//--------
-	// 编辑器帮助
-	$("#tipsBtn").click(function() {
-		showDialog2("#tipsDialog");
-	});
-	
+	/*
 	//--------
 	// 建议
 	$("#yourSuggestions").click(function() {
@@ -832,14 +854,14 @@ $(function() {
 			}
 		});
 	});
+	*/
 	
 	// 编辑器模式
 	em.init();
 	
 	// 手机端?
 	Mobile.init();
-});
-
+//});
 
 //------------
 // pjax
@@ -906,10 +928,12 @@ var Pjax = {
 	// ajax后调用
 	changeNote: function(noteInfo) {
 		var me = this;
-		log("push");
 		var noteId = noteInfo.NoteId;
 		var title = noteInfo.Title;
 		var url = '/note/' + noteId;
+		if (location.href.indexOf('?online') > 0) {
+			url += '?online=' + /online=([0-9])/.exec(location.href)[1];
+		}
 		if(location.hash) {
 			url += location.hash;
 		}
@@ -972,61 +996,100 @@ LeaAce = {
 		if(!force && !me.canAndIsAce()) {
 			return;
 		}
-		me.disableAddHistory();
 		var $pre = $('#' + id);
-		$pre.find('.toggle-raw').remove();
-		var preHtml = $pre.html();
-
-		$pre.removeClass('ace-to-pre');
-		$pre.attr("contenteditable", false); // ? 避免tinymce编辑
-		var aceEditor = ace.edit(id);
-		aceEditor.setTheme("ace/theme/tomorrow");
-
-		var brush = me.getPreBrush($pre);
-		var b = "";
-		if(brush) {
-			try {
-				b = brush.split(':')[1];
-			} catch(e) {}
+		if($pre.length == 0) {
+			return;
 		}
-		b = b || "javascript";
-		aceEditor.session.setMode("ace/mode/" + b);
-		aceEditor.getSession().setUseWorker(false); // 不用语法检查
-		aceEditor.setOption("showInvisibles", false); // 不显示空格, 没用
-		aceEditor.setOption("wrap", "free");
-		aceEditor.setShowInvisibles(false);
-		aceEditor.setAutoScrollEditorIntoView(true);
-		aceEditor.setOption("maxLines", 100);
-		aceEditor.commands.addCommand({
-		    name: "undo",
-		    bindKey: {win: "Ctrl-z", mac: "Command-z"},
-		    exec: function(editor) {
-		    	var undoManager = editor.getSession().getUndoManager();
-		    	if(undoManager.hasUndo()){ 
-		    		undoManager.undo();
-		    	} else {
-		    		undoManager.reset();
-		    		tinymce.activeEditor.undoManager.undo();
-		    	}
-		    }
-		});
-		this._aceEditors[id] = aceEditor;
-		if(val) {
-			aceEditor.setValue(val);
-			// 不要选择代码
-			// TODO
-		} else {
-			// 防止 <pre><div>xx</div></pre> 这里的<div>消失
-			// preHtml = preHtml.replace('/&nbsp;/g', ' '); // 以前是把' ' 全换成了&nbsp;
-			// aceEditor.setValue(preHtml);
-			// 全不选
-			// aceEditor.selection.clearSelection();
+		var rawCode = $pre.html(); // 原生code
+		try {
+			me.disableAddHistory();
+			
+			// 本身就有格式的, 防止之前有格式的显示为<span>(ace下)
+			var classes = $pre.attr('class') || '';
+			var isHtml = classes.indexOf('brush:html') != -1;
+			if($pre.attr('style') || 
+				(!isHtml && $pre.html().indexOf('style') != -1)) { // 如果是html就不用考虑了, 因为html格式的支持有style
+				$pre.html($pre.text());
+			}
+			$pre.find('.toggle-raw').remove();
+			var preHtml = $pre.html();
+
+			$pre.removeClass('ace-to-pre');
+			$pre.attr("contenteditable", false); // ? 避免tinymce编辑
+			var aceEditor = ace.edit(id);
+
+			aceEditor.container.style.lineHeight = 1.5;
+			aceEditor.setTheme("ace/theme/tomorrow");
+
+			var brush = me.getPreBrush($pre);
+			var b = "";
+			if(brush) {
+				try {
+					b = brush.split(':')[1];
+				} catch(e) {}
+			}
+			if (!b || b === 'false') {
+				b = 'javascript';
+			}
+			
+			aceEditor.session.setMode("ace/mode/" + b);
+			aceEditor.session.setOption("useWorker", false); // 不用语法检查
+			// retina
+			if(window.devicePixelRatio == 2) {
+				aceEditor.setFontSize("12px");
+			}
+			else {
+				aceEditor.setFontSize("14px");
+			}
+			aceEditor.getSession().setUseWorker(false); // 不用语法检查
+			aceEditor.setOption("showInvisibles", false); // 不显示空格, 没用
+			aceEditor.setShowInvisibles(false); // OK 不显示空格
+			aceEditor.setOption("wrap", "free");
+			aceEditor.setShowInvisibles(false);
+			
+			aceEditor.setReadOnly(Note.readOnly);
+			
+			aceEditor.setAutoScrollEditorIntoView(true);
+			aceEditor.setOption("maxLines", 10000);
+			aceEditor.commands.addCommand({
+			    name: "undo",
+			    bindKey: {win: "Ctrl-z", mac: "Command-z"},
+			    exec: function(editor) {
+			    	var undoManager = editor.getSession().getUndoManager();
+			    	if(undoManager.hasUndo()){ 
+			    		undoManager.undo();
+			    	} else {
+			    		undoManager.reset();
+			    		tinymce.activeEditor.undoManager.undo();
+			    	}
+			    }
+			});
+			this._aceEditors[id] = aceEditor;
+			if(val) {
+				aceEditor.setValue(val);
+				// 不要选择代码
+				// TODO
+			} else {
+				// 防止 <pre><div>xx</div></pre> 这里的<div>消失
+				// preHtml = preHtml.replace('/&nbsp;/g', ' '); // 以前是把' ' 全换成了&nbsp;
+				// aceEditor.setValue(preHtml);
+				// 全不选
+				// aceEditor.selection.clearSelection();
+			}
+
+			// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+			// "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+			me.resetAddHistory();
+			return aceEditor;
+		} catch(e) {
+			// 当有错误时, 会有XXXXX的形式, 此时不要ace, 直接原生的!!!
+			console.error('ace error!!!!');
+			console.error(e);
+			$pre.attr("contenteditable", true);
+			$pre.removeClass('ace-tomorrow ace_editor ace-tm');
+			$pre.html(rawCode);
+			me.resetAddHistory();
 		}
-
-		// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-
-		me.resetAddHistory();
-		return aceEditor;
 	},
 	clearIntervalForInitAce: null,
 	initAceFromContent: function(editor) {
@@ -1045,15 +1108,21 @@ LeaAce = {
 			var pres = content.find('pre');
 			for(var i = 0 ; i < pres.length; ++i) {
 				var pre = pres.eq(i);
-				// 如果不是ace
-				if(me.isInAce(pre)) {
-					break;
+				
+				var aceAndNode = me.isInAce(pre);
+				if(aceAndNode) {
+					if(isAceError(aceAndNode[0].getValue())) {
+						console.error('之前有些没有destroy掉');
+					}
+					else {
+						break;
+					}
 				}
+				
 				setTimeout((function(pre) {
 					return function() {
 						pre.find('.toggle-raw').remove();
 						var value = pre.html();
-						log(value);
 						value = value.replace(/ /g, "&nbsp;").replace(/\<br *\/*\>/gi,"\n").replace(/</g, '&lt;').replace(/>/g, '&gt;');
 						pre.html(value);
 						var id = pre.attr('id');
@@ -1151,6 +1220,19 @@ LeaAce = {
 		}
 		return this._aceEditors[id];
 	},
+	setAceReadOnly: function(pre, readOnly) {
+		var me = this;
+		if(typeof pre == 'object') {
+			var id = pre.attr('id');
+		}
+		else {
+			var id = pre;
+		}
+		var ace = me.getAce(id);
+		if(ace) {
+			ace.setReadOnly(readOnly);
+		}
+	},
 	// 当前焦点是否在aceEditor中
 	nowIsInAce: function () {
 		if(!this.canAce()) {
@@ -1243,6 +1325,10 @@ LeaAce = {
 			var aceEditor = aceEditorAndPre[0];
 			var $pre = aceEditorAndPre[1];
 			var value = aceEditor.getValue();
+			// 表示有错
+			if(isAceError(value)) {
+				value = $pre.html();
+			}
 			value = value.replace(/</g, '&lt').replace(/>/g, '&gt');
 			// var id = getAceId();
 			var replacePre = $('<pre class="' + $pre.attr('class') + ' ace-to-pre">' + value + "</pre>");
@@ -1268,19 +1354,34 @@ LeaAce = {
 			}
 		}
 	},
+	// 当删除了pre时, 也要删除toggle raw
+	removeAllToggleRaw: function () {
+		$('#editorContent .toggle-raw').remove();
+	},
+	removeCurToggleRaw: function() {
+		if(this.curToggleRaw) {
+			try {
+				this.curToggleRaw.remove();
+			}
+			catch(e){}
+		}
+	},
+	curToggleRaw: null,
 	// 转换raw <-> code
 	handleEvent: function () {
 		if(!this.canAce()) {
 			return;
 		}
 		var me = this;
-		$("#editorContent").on('mouseenter', 'pre', function(){
+		$("#editorContent").on('mouseenter', 'pre', function(e) {
 			// log('in');
 			// log($(this));
 			var $t = $(this);
 			$raw = $t.find('.toggle-raw');
 			if($raw.length == 0) {
-				$t.append('<div class="toggle-raw" title="Toggle code with raw html"><input type="checkbox" /></div>');
+				var curToggleRaw = $('<div class="toggle-raw" title="Toggle code with raw html"><input type="checkbox" /></div>');
+				$t.append(curToggleRaw);
+				me.curToggleRaw = curToggleRaw;
 			}
 			$input = $t.find('.toggle-raw input');
 			if(LeaAce.isInAce($t)) {
@@ -1296,11 +1397,39 @@ LeaAce = {
 		$("#editorContent").on('change', '.toggle-raw input', function(){
 			var checked = $(this).prop('checked');
 			var $pre = $(this).closest('pre');
-			if(checked) {
+			if (checked) {
 				// 转成ace
 				me.preToAce($pre, true);
 			} else {
 				me.aceToPre($pre, true);
+			}
+		});
+
+		// 当ace里没有内容时, 连续删除则把ace remove掉
+		// keydown的delete事件没有
+		var lastDeleteTime;
+		$("#editorContent").on('keyup', 'pre',  function(e) {
+			var keyCode = e.keyCode;
+			// console.log('keyup');
+			if(keyCode == 8 || keyCode == 46) { // BackSpace || Delete
+				// console.log('delete');
+				if(!lastDeleteTime) {
+					lastDeleteTime = (new Date()).getTime();
+				}
+				else {
+					var now = (new Date()).getTime();
+					if(now - lastDeleteTime < 300) { // 间隔时间很短
+						var inAce = me.isInAce($(this))
+						if(inAce && !inAce[0].getValue()) {
+							// console.log('destroy');
+							inAce[0].destroy();
+							$(this).remove();
+							return;
+						}
+					}
+					lastDeleteTime = now;
+				}
+				// console.log($(this));
 			}
 		});
 	}
@@ -1309,7 +1438,8 @@ LeaAce = {
 // note.html调用
 // 实始化页面
 function initPage() {
-	$(function() {
+	// 不要用$(function() {}) 因为要等到<script>都加载了才执行
+	// $(function() {
 		Notebook.renderNotebooks(notebooks);
 		Share.renderShareNotebooks(sharedUserInfos, shareNotebooks);
 		
@@ -1332,7 +1462,7 @@ function initPage() {
 				}
 			}
 		}
-		
+
 		// 指定笔记, 也要保存最新笔记
 		if(latestNotes.length > 0) {
 			for(var i = 0; i < latestNotes.length; ++i) {
@@ -1345,5 +1475,5 @@ function initPage() {
 		initSlimScroll();
 
 		LeaAce.handleEvent();
-	});
+	// });
 }
